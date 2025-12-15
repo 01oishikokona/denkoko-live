@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>電ここライブ - Live Streaming Platform</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/umd/lucide.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes slide-left {
+            0% { transform: translateX(100%); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateX(-100%); opacity: 0; }
+        }
+        @keyframes float-up {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-300px) scale(1.5); opacity: 0; }
+        }
+        .animate-slide-left { animation: slide-left 5s linear; }
+        .animate-float-up { animation: float-up 3s ease-out; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { Send, Heart, Gift, Users, Camera, Eye, LogOut, User } = lucide;
+
+        // ストレージシミュレーション
+        const storage = {
+            get: (key) => {
+                const value = localStorage.getItem(key);
+                return value ? { value } : null;
+            },
+            set: (key, value) => {
+                localStorage.setItem(key, value);
+                return { key, value };
+            },
+            delete: (key) => {
+                localStorage.removeItem(key);
+                return { key, deleted: true };
+            }
+        };
+
+        const DenkokoLive = () => {
+            const [mode, setMode] = useState('viewer');
+            const [messages, setMessages] = useState([]);
+            const [inputMessage, setInputMessage] = useState('');
+            const [username, setUsername] = useState('');
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [floatingComments, setFloatingComments] = useState([]);
+            const [viewerCount, setViewerCount] = useState(142);
+            const [likes, setLikes] = useState(1287);
+            const [gifts, setGifts] = useState([]);
+            const [userProfile, setUserProfile] = useState(null);
+            const [showProfile, setShowProfile] = useState(false);
+            const [loading, setLoading] = useState(true);
+            const [showSplash, setShowSplash] = useState(true);
+            const chatEndRef = useRef(null);
+
+            useEffect(() => {
+                const timer = setTimeout(() => setShowSplash(false), 2000);
+                return () => clearTimeout(timer);
+            }, []);
+
+            useEffect(() => {
+                const loadUserData = () => {
+                    try {
+                        const userData = storage.get('denkoko_user_profile');
+                        if (userData && userData.value) {
+                            const profile = JSON.parse(userData.value);
+                            setUserProfile(profile);
+                            setUsername(profile.username);
+                            setMode(profile.preferredMode || 'viewer');
+                            setIsLoggedIn(true);
+                        }
+                    } catch (error) {
+                        console.log('初回ログインです');
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                
+                if (!showSplash) loadUserData();
+            }, [showSplash]);
+
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setViewerCount(prev => prev + Math.floor(Math.random() * 5) - 2);
+                }, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setFloatingComments(prev => prev.filter(c => Date.now() - c.timestamp < 5000));
+                    setGifts(prev => prev.filter(g => Date.now() - g.timestamp < 3000));
+                }, 1000);
+                return () => clearInterval(interval);
+            }, []);
+
+            const handleSendMessage = () => {
+                if (!inputMessage.trim() || !isLoggedIn) return;
+                const newMessage = {
+                    id: Date.now(),
+                    username,
+                    text: inputMessage,
+                    timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+                };
+                setMessages(prev => [...prev, newMessage]);
+                const floatingComment = {
+                    id: Date.now(),
+                    text: inputMessage,
+                    username,
+                    top: Math.random() * 60 + 10,
+                    timestamp: Date.now()
+                };
+                setFloatingComments(prev => [...prev, floatingComment]);
+                setInputMessage('');
+            };
+
+            const handleLike = () => setLikes(prev => prev + 1);
+
+            const handleGift = (giftType) => {
+                const gift = {
+                    id: Date.now(),
+                    type: giftType,
+                    username,
+                    timestamp: Date.now(),
+                    bottom: Math.random() * 50 + 25
+                };
+                setGifts(prev => [...prev, gift]);
+            };
+
+            const handleLogin = (selectedMode) => {
+                if (username.trim()) {
+                    const profile = {
+                        username: username.trim(),
+                        preferredMode: selectedMode,
+                        createdAt: new Date().toISOString(),
+                        totalGifts: 0,
+                        totalLikes: 0
+                    };
+                    try {
+                        storage.set('denkoko_user_profile', JSON.stringify(profile));
+                        setUserProfile(profile);
+                        setMode(selectedMode);
+                        setIsLoggedIn(true);
+                    } catch (error) {
+                        console.error('ログイン保存エラー:', error);
+                        setMode(selectedMode);
+                        setIsLoggedIn(true);
+                    }
+                }
+            };
+
+            const handleLogout = () => {
+                try {
+                    storage.delete('denkoko_user_profile');
+                } catch (error) {
+                    console.error('ログアウトエラー:', error);
+                }
+                setIsLoggedIn(false);
+                setUsername('');
+                setUserProfile(null);
+                setMessages([]);
+                setFloatingComments([]);
+                setGifts([]);
+            };
+
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter') handleSendMessage();
+            };
+
+            const giftTypes = [
+                { emoji: '🌟', name: 'スター', price: 10 },
+                { emoji: '💎', name: 'ダイヤ', price: 50 },
+                { emoji: '👑', name: '王冠', price: 100 },
+                { emoji: '🚀', name: 'ロケット', price: 500 }
+            ];
+
+            if (showSplash) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-700 flex items-center justify-center">
+                        <div className="text-center animate-pulse">
+                            <div className="w-32 h-32 mx-auto mb-6 bg-white rounded-3xl shadow-2xl flex items-center justify-center">
+                                <div className="text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">557</div>
+                            </div>
+                            <h1 className="text-5xl font-bold text-white mb-2">電ここライブ</h1>
+                            <p className="text-purple-200 text-lg">Live Streaming Platform</p>
+                            <div className="mt-8">
+                                <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto"></div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center">
+                        <div className="text-white text-2xl">読み込み中...</div>
+                    </div>
+                );
+            }
+
+            if (!isLoggedIn) {
+                return (
+                    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-pink-700 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+                            <div className="text-center mb-6">
+                                <div className="w-24 h-24 mx-auto mb-4 bg-gradient-to-br from-pink-500 to-pink-600 rounded-2xl shadow-lg flex items-center justify-center">
+                                    <div className="text-4xl font-bold text-white">557</div>
+                                </div>
+                                <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">電ここライブ</h1>
+                                <p className="text-gray-600">アカウントにログイン</p>
+                                <p className="text-sm text-purple-600 mt-2">※ログイン情報は自動保存されます</p>
+                            </div>
+                            <div className="space-y-4">
+                                <input
+                                    type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    placeholder="ユーザー名を入力"
+                                    className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:outline-none focus:border-purple-500 text-lg"
+                                    maxLength={20}
+                                />
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleLogin('viewer')} className="flex-1 bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition font-semibold flex items-center justify-center gap-2" disabled={!username.trim()}>
+                                        <Eye size={20} />
+                                        視聴者でログイン
+                                    </button>
+                                    <button onClick={() => handleLogin('streamer')} className="flex-1 bg-pink-600 text-white py-3 rounded-lg hover:bg-pink-700 transition font-semibold flex items-center justify-center gap-2" disabled={!username.trim()}>
+                                        <Camera size={20} />
+                                        配信者でログイン
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-900 text-white">
+                    <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 shadow-lg">
+                        <div className="max-w-7xl mx-auto flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center font-bold text-purple-600">557</div>
+                                <div className="flex items-center gap-2">
+                                    {mode === 'streamer' ? <Camera size={24} className="text-red-400 animate-pulse" /> : <Eye size={24} />}
+                                    <div>
+                                        <h1 className="text-lg font-bold">電ここライブ</h1>
+                                        <p className="text-xs opacity-90">{mode === 'streamer' ? '🔴 配信中' : 'ライブ視聴中'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2 bg-black bg-opacity-30 px-4 py-2 rounded-full">
+                                    <Users size={20} />
+                                    <span className="font-semibold">{viewerCount}</span>
+                                </div>
+                                <div className="flex items-center gap-2 bg-black bg-opacity-30 px-4 py-2 rounded-full">
+                                    <Heart size={20} className="text-red-400" />
+                                    <span className="font-semibold">{likes.toLocaleString()}</span>
+                                </div>
+                                <div className="relative">
+                                    <button onClick={() => setShowProfile(!showProfile)} className="flex items-center gap-2 bg-black bg-opacity-30 px-4 py-2 rounded-full hover:bg-opacity-40 transition">
+                                        <User size={20} />
+                                        <span className="font-semibold">{username}</span>
+                                    </button>
+                                    {showProfile && (
+                                        <div className="absolute right-0 mt-2 w-64 bg-gray-800 rounded-lg shadow-xl p-4 z-10">
+                                            <div className="text-center mb-4">
+                                                <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full flex items-center justify-center mx-auto mb-2">
+                                                    <User size={32} />
+                                                </div>
+                                                <h3 className="font-bold text-lg">{username}</h3>
+                                                <p className="text-sm text-gray-400">{mode === 'streamer' ? '配信者' : '視聴者'}</p>
+                                            </div>
+                                            <div className="border-t border-gray-700 pt-3 mb-3">
+                                                <div className="flex justify-between text-sm mb-2">
+                                                    <span className="text-gray-400">登録日</span>
+                                                    <span>{new Date(userProfile?.createdAt).toLocaleDateString('ja-JP')}</span>
+                                                </div>
+                                            </div>
+                                            <button onClick={handleLogout} className="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg transition flex items-center justify-center gap-2">
+                                                <LogOut size={16} />
+                                                ログアウト
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4" style={{height: 'calc(100vh - 88px)'}}>
+                        <div className="lg:col-span-2 relative">
+                            <div className="bg-black rounded-xl overflow-hidden h-full relative shadow-2xl">
+                                <div className="absolute inset-0 bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+                                    {mode === 'streamer' ? (
+                                        <div className="text-center">
+                                            <Camera size={128} className="mx-auto mb-4 text-white opacity-50" />
+                                            <p className="text-2xl font-bold text-white opacity-75">あなたの配信画面</p>
+                                            <p className="text-gray-300 mt-2">カメラがここに表示されます</p>
+                                            <p className="text-sm text-purple-300 mt-4">ようこそ、{username}さん！</p>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center">
+                                            <div className="w-32 h-32 mx-auto mb-4 bg-pink-500 rounded-full flex items-center justify-center">
+                                                <Camera size={64} className="text-white" />
+                                            </div>
+                                            <p className="text-2xl font-bold text-white">配信者の画面</p>
+                                            <p className="text-gray-300 mt-2">素晴らしい配信をお楽しみください！</p>
+                                            <p className="text-sm text-purple-300 mt-4">視聴中：{username}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                {floatingComments.map((comment) => (
+                                    <div key={comment.id} className="absolute left-0 right-0 px-4 animate-slide-left" style={{top: `${comment.top}%`}}>
+                                        <div className="inline-block bg-black bg-opacity-70 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm">
+                                            <span className="font-bold text-purple-300">{comment.username}</span>
+                                            <span className="ml-2">{comment.text}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                                {gifts.map((gift) => (
+                                    <div key={gift.id} className="absolute right-8 animate-float-up" style={{bottom: `${gift.bottom}%`}}>
+                                        <div className="text-6xl">{giftTypes.find(g => g.name === gift.type)?.emoji}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex flex-col h-full bg-gray-800 rounded-xl overflow-hidden shadow-2xl">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                                {messages.length === 0 && (
+                                    <div className="text-center text-gray-500 mt-8">
+                                        <p>チャットはまだありません</p>
+                                        <p className="text-sm">最初のメッセージを送ってみましょう！</p>
+                                    </div>
+                                )}
+                                {messages.map((msg) => (
+                                    <div key={msg.id} className="flex flex-col gap-1">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="font-bold text-purple-400 text-sm">{msg.username}</span>
+                                            <span className="text-xs text-gray-500">{msg.timestamp}</span>
+                                        </div>
+                                        <div className="bg-gray-700 rounded-lg px-3 py-2 text-sm">{msg.text}</div>
+                                    </div>
+                                ))}
+                                <div ref={chatEndRef} />
+                            </div>
+                            <div className="p-4 bg-gray-900 border-t border-gray-700">
+                                <div className="flex gap-2 mb-3">
+                                    <button onClick={handleLike} className="flex-1 bg-red-600 hover:bg-red-700 py-2 rounded-lg transition flex items-center justify-center gap-2 font-semibold">
+                                        <Heart size={20} />
+                                        いいね
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-4 gap-2 mb-3">
+                                    {giftTypes.map((gift) => (
+                                        <button key={gift.name} onClick={() => handleGift(gift.name)} className="bg-gradient-to-br from-yellow-500 to-orange-600 hover:from-yellow-400 hover:to-orange-500 py-3 rounded-lg transition flex flex-col items-center justify-center text-xs font-semibold" title={`${gift.name} (¥${gift.price})`}>
+                                            <span className="text-2xl mb-1">{gift.emoji}</span>
+                                            <span>¥{gift.price}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input type="text" value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} onKeyPress={handleKeyPress} placeholder="メッセージを入力..." className="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                                    <button onClick={handleSendMessage} className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition flex items-center justify-center">
+                                        <Send size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<DenkokoLive />, document.getElementById('root'));
+    </script>
+</body>
+</html>
